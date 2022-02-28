@@ -1,0 +1,209 @@
+import re
+import requests
+import json
+import time
+from snownlp import SnowNLP
+import openpyxl
+import os
+import random
+
+
+#可以增减修改cookie
+Cookies = [
+    'SUB=_2A25M3iN0DeRhGeBO7VUS8CjPwjyIHXVsIU08rDV6PUJbktAKLW7AkW1NRc_wdUea4sdZLWKpEN0wAlxjA7c-Q-nE; SUBP=0033WrSXqPxfM725Ws9jqgMF55529P9D9W5ZBDLCxFQlAm..VFYglhrX5NHD95QcehqNe05ce0.7Ws4DqcjPi--ci-z0i-z0i--fiK.0i-2fSoBEeKzt; SSOLoginState=1641698084; _T_WM=76149121571; WEIBOCN_FROM=1110006030; MLOGIN=1; M_WEIBOCN_PARAMS=luicode%3D10000011%26lfid%3D100103type%253D61%2526q%253Dsz%2526t%253D0%26fid%3D100103type%253D61%2526q%253Dsz%2526t%253D0%26uicode%3D10000011; XSRF-TOKEN=bd7ea2',
+
+]
+
+#请求头
+headers = {
+    'Accept': 'application/json, text/plain, */*',
+    'Referer': 'https://m.weibo.cn/search?containerid=100103type%3D1%26q%3Dsz',
+    'MWeibo-Pwa': '1',
+    'X-XSRF-TOKEN': 'bd7ea2',
+    'X-Requested-With': 'XMLHttpRequest',
+    'Sec-Fetch-Dest': 'empty',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Safari/537.36',
+    'authority': 'm.weibo.cn',
+    'pragma': 'no-cache',
+    'cache-control': 'no-cache',
+    'accept': 'application/json, text/plain, */*',
+    'mweibo-pwa': '1',
+    'x-xsrf-token': 'bd7ea2',
+    'x-requested-with': 'XMLHttpRequest',
+    'sec-fetch-dest': 'empty',
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Safari/537.36',
+    'sec-fetch-site': 'same-origin',
+    'sec-fetch-mode': 'cors',
+    'referer': 'https://m.weibo.cn/search?containerid=100103type%3D1%26q%3Dsz',
+    'accept-language': 'zh-CN,zh;q=0.9',
+    'cookie': random.choice(Cookies)
+}
+
+#获取数据
+def get_weibo_id(num):
+    all_mid = []
+
+    #50代表前50页，可以调整页数
+    for page in range(1, 2):
+
+        #0.5 代表0.5s爬取一次，可以更改控制爬取每一页的时间
+        time.sleep(0.5)
+        print(str(num) + '   page:' + str(page))
+
+        while True:
+            #该url网址为爬取关键词的url
+            url = f'https://m.weibo.cn/api/container/getIndex?containerid=100103type%3D61%26q%3Dsz%26t%3D0&page_type=searchall&page={str(page)}'
+            response = requests.get(url, headers=headers, timeout=30)
+            response.encoding = 'utf-8'
+            if response.status_code == 403:
+                print("<< error: 403 >>")
+                time.sleep(1)
+                continue
+            html = json.loads(response.text)
+            break
+
+        for i in html['data']['cards']:
+            l = []
+            created_at = i['mblog']['created_at']
+            mid = i['mblog']['mid']
+            text = i['mblog']['text']
+            comments_count = i['mblog']['comments_count']
+            # print(mid,created_at,comments_count)
+            l.append(mid)
+            l.append(text)
+            l.append(created_at)
+            l.append(comments_count)
+            all_mid.append(l)
+
+    return all_mid
+
+#情感打分
+def data_qgfenxi(data):
+    all_data = []
+
+    def get_score(text):
+        try:
+            s = SnowNLP(text)
+            score = s.sentiments
+            score = round(score, 2)
+            # print(score)
+            return score
+        except:
+            score = 0.5
+            return score
+
+    for i in data:
+        text = get_text(i[1])
+        score = get_score(text)
+        score = score * 2 - 1
+        all_data.append([i[0], text, score])
+    write_data_xlsx(all_data)
+
+#写入文件
+def write_data_xlsx(write_list):
+    print('开始写入文件---------------')
+    content_path = r'./weibo_data.xlsx'
+    print(content_path)
+
+    if os.path.exists(content_path):
+        wb = openpyxl.load_workbook(content_path)
+        del wb['Sheet1']
+        ws1 = wb.create_sheet("Mysheet")  # 创建一个sheet
+        ws1.title = "Sheet1"
+        ws1.append(['mid', 'text', 'score'])
+        sheet = wb['Sheet1']
+        for w in write_list:
+            sheet.append(w)
+        wb.save(content_path)
+    else:
+        ws = openpyxl.Workbook()
+        ws1 = ws.create_sheet("Mysheet")  # 创建一个sheet
+        ws1.title = "Sheet1"
+        ws1.append(['mid', 'text', 'score'])
+        ws.save(content_path)
+
+        wb = openpyxl.load_workbook(content_path)
+        sheet = wb['Sheet1']
+        for w in write_list:
+            sheet.append(w)
+
+        wb.save(content_path)
+    print('写入文件结束---------------')
+
+def write_data_xlsx1(write_list):
+    print('开始写入文件---------------')
+    content_path = r'./weibo_data.xlsx'
+    print(content_path)
+
+    if os.path.exists(content_path):
+        wb = openpyxl.load_workbook(content_path)
+        ws1 = wb.create_sheet("Mysheet")  # 创建一个sheet
+        ws1.title = "Sheet2"
+        ws1.append(['次数', 't'])
+        sheet = wb['Sheet2']
+        for w in write_list:
+            sheet.append(w)
+        wb.save(content_path)
+    else:
+        ws = openpyxl.Workbook()
+        ws1 = ws.create_sheet("Mysheet")  # 创建一个sheet
+        ws1.title = "Sheet2"
+        ws1.append(['次数', 't'])
+        ws.save(content_path)
+
+        wb = openpyxl.load_workbook(content_path)
+        sheet = wb['Sheet2']
+        for w in write_list:
+            sheet.append(w)
+
+        wb.save(content_path)
+    print('写入文件结束---------------')
+
+
+#数据清洗
+def get_text(c):
+    nc = ''
+    if '<span' not in c:
+        nc = c
+    else:
+        c1 = c
+        try:
+            comment = re.findall(r'<a(.*?)text">.*?</span></a>', c, re.S)
+            yz = comment[0]
+            for j in comment:
+                comment = '<a' + j + 'text">'
+                c1 = c1.replace(comment, '').replace('</span></a>', '')
+            nc = c1
+        except:
+            comment = re.findall(r'<span(.*?)</span>', c, re.S)
+
+            for j in comment:
+                comment = '<span' + j + '</span>'
+                c1 = c1.replace(comment, '').replace('</span></a>', '')
+            nc = c1
+    return nc
+
+
+
+# 主函数（循环爬取）
+def main():
+    num = 1
+    while True:
+        print('-----------正在执行第'+str(num)+'次-------------')
+        start = time.time()
+        all_data = get_weibo_id(num)
+        data_qgfenxi(all_data)
+        end = time.time() - start
+        print(end)
+        write_data_xlsx1([[num,end]])
+        num+=1
+        time.sleep(1)
+        break
+
+if __name__ == '__main__':
+    main()
+
+
+
+
+
