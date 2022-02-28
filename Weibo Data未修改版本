@@ -198,7 +198,7 @@ def main():
         write_data_xlsx1([[num,end]])
         num+=1
         time.sleep(1)
-        break
+       
 
 if __name__ == '__main__':
     main()
